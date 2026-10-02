@@ -1,6 +1,6 @@
 # HW 2B — Web Security with OWASP Juice Shop
 
-**Repository:** `https://github.com/<your-username>/juice-shop-login-clone` *(replace with your public repo URL)*
+**Repository:** https://github.com/cmangalwedhe/csce-477-hw2
 
 ---
 
