@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>HW 2B — Web Security with OWASP Juice Shop</title>
+<style>
+  @page { size: letter; margin: 2cm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    color: #1f2328; line-height: 1.5; font-size: 11pt; margin: 0;
+  }
+  h1 { font-size: 20pt; margin: 0 0 2px; }
+  h2 {
+    font-size: 14pt; margin: 22px 0 6px; padding-bottom: 4px;
+    border-bottom: 2px solid #d2691e; color: #9c4a12;
+  }
+  h3 { font-size: 11.5pt; margin: 14px 0 4px; }
+  .meta { color: #555; font-size: 10pt; margin-bottom: 4px; }
+  .repo { font-size: 10.5pt; margin: 2px 0 10px; }
+  code, pre { font-family: "Cascadia Code", Consolas, "Courier New", monospace; }
+  code { background: #f2efe9; padding: 1px 4px; border-radius: 3px; font-size: 9.5pt; }
+  pre {
+    background: #1e1e1e; color: #e8e8e8; padding: 12px 14px; border-radius: 6px;
+    font-size: 8.7pt; line-height: 1.4; overflow-x: auto; white-space: pre-wrap;
+    word-break: break-word;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  figure { margin: 10px 0; text-align: center; page-break-inside: avoid; }
+  figure img {
+    max-width: 78%; border: 1px solid #ddd; border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+  figcaption { font-size: 9pt; color: #666; margin-top: 4px; }
+  p { margin: 7px 0; }
+  .fail { color: #b3261e; font-weight: 600; }
+  .ok { color: #1a7f37; font-weight: 600; }
+  section { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<h1>HW 2B — Web Security with OWASP Juice Shop</h1>
+<div class="meta">Secure feature design · front-end login form · self-exploitation</div>
+<div class="repo"><strong>Repository:</strong>
+  <code>https://github.com/&lt;your-username&gt;/juice-shop-login-clone</code>
+  <em>(replace with your public repo URL)</em>
+</div>
+
+<section>
+<h2>Part 1 — Secure Feature Design</h2>
+<p>Testing OWASP Juice Shop, I confirmed three vulnerabilities.
+<strong>(1) SQL Injection login bypass:</strong> entering <code>' OR 1=1--</code> as the
+email with any password logs you in as admin, because the query concatenates input
+directly. <strong>(2) Cross-Site Scripting:</strong> the search bar reflects the
+<code>q</code> parameter unescaped, so <code>&lt;iframe src="javascript:alert(1)"&gt;</code>
+executes. <strong>(3) Broken authentication:</strong> weak passwords and no rate limiting
+allow brute force. Mitigations: use <strong>parameterized queries</strong> (input becomes
+data, never SQL), <strong>output encoding / CSP</strong> (markup renders as text), and
+<strong>bcrypt hashing + rate limiting + lockout</strong>. These remove the attacker's
+ability to alter query structure, inject script, or guess credentials at scale.</p>
+
+<h3>Secure password handling example</h3>
+<pre><code>const bcrypt = require("bcryptjs");
+// On registration — store only the salted hash (cost factor 12):
+const hash = bcrypt.hashSync(plaintextPassword, 12);
+// On login — compare without ever storing or logging plaintext:
+const ok = bcrypt.compareSync(submittedPassword, hash);</code></pre>
+</section>
+
+<section>
+<h2>Part 2 — Front-End Form Implementation</h2>
+<p>I built a login form (<code>public/index.html</code> + <code>app.js</code>) styled to
+resemble Juice Shop, backed by a small Express server (<code>server.js</code>). The
+<strong>client</strong> blocks empty submissions and checks that the email contains
+<code>@</code> and the password is &ge; 8 characters before sending. The
+<strong>server</strong> re-runs identical validation (clients can be bypassed), then
+authenticates against an in-memory SQLite DB using <strong>parameterized queries</strong>,
+<strong>bcrypt</strong>-hashed passwords, <strong>generic error messages</strong>
+(prevents account enumeration), and a <strong>rate limiter</strong> (10 attempts/15 min).
+Status text is written with <code>textContent</code>, never <code>innerHTML</code>, so
+echoed input can't execute. Run with <code>npm install &amp;&amp; npm start</code>, then open
+<code>http://localhost:3000</code>.</p>
+<figure>
+  <img src="shot-01-login.png" alt="Login form" />
+  <figcaption>The login form running at localhost:3000.</figcaption>
+</figure>
+</section>
+
+<section>
+<h2>Part 3 — Exploiting My Own Form</h2>
+<p><strong>Steps taken.</strong> I attacked my own login with (a) the SQL-injection
+auth-bypass <code>admin@juice-sh.op' OR '1'='1</code>, (b) a raw <code>' OR 1=1--</code>,
+and (c) an XSS payload <code>&lt;script&gt;alert(1)&lt;/script&gt;@x</code> in the email
+field — via both the browser UI and <code>curl</code>.</p>
+
+<p><strong>Result — <span class="fail">attacks failed.</span></strong> Every payload
+returned <code>Invalid email or password.</code> No login, no script execution. The
+parameterized query binds the payload as a literal string that matches no row; the
+<code>textContent</code> sink renders markup as inert text. A separate demo
+(<code>vulnerable-demo.js</code>) proves the <em>same</em> payload succeeds against
+concatenated SQL, returning the admin row — confirming the fix is what matters.</p>
+
+<figure>
+  <img src="shot-02-injection-failed.png" alt="SQL injection attempt rejected" />
+  <figcaption>SQL-injection payload in the email field — rejected with a generic error.</figcaption>
+</figure>
+
+<p><strong>Fix.</strong> If the form <em>were</em> vulnerable, the fix is the one already
+applied: <strong>parameterized / prepared statements</strong> for every query (plus output
+encoding for any reflected value). Never build SQL by string concatenation.</p>
+
+<pre><code>=== SQL injection auth-bypass attempt ===
+{"success":false,"message":"Email must contain '@'."}
+=== injection with valid-looking email ('admin@juice-sh.op' OR '1'='1) ===
+{"success":false,"message":"Invalid email or password."}
+=== XSS payload in email field ===
+{"success":false,"message":"Invalid email or password."}
+=== correct credentials ===
+{"success":true,"message":"Login successful."}
+
+=== vulnerable-demo.js (concatenated SQL, SAME payload) ===
+Executed query: SELECT * FROM users WHERE email = 'admin@juice-sh.op' OR '1'='1'
+Leaked row: { id: 1, email: 'admin@juice-sh.op', password_hash: 'real-hash' }
+Rows returned: 1  ->  AUTH BYPASS SUCCEEDED
+Parameterized version with SAME payload -> matched NO rows (injection neutralized).</code></pre>
+</section>
+
+</body>
+</html>
