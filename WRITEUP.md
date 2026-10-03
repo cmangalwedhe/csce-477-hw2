@@ -4,7 +4,7 @@
 
 ## Part 1: Secure Feature Design
 
-To design a secure registration and login system for Juice Shop, I first ran the app locally (v20.2.0, Docker) and exploited three real weaknesses. **(1) SQL injection bypass:** typing `' OR 1=1--` in the login email with any password logged me in as `admin@juice-sh.op` (Figures 1-2), because input is concatenated into the query; the token even showed `"role":"admin"`. **(2) DOM XSS:** searching `<iframe src="javascript:alert(\`xss\`)">` ran my own JavaScript (Figure 3). **(3) No rate limiting:** 20 wrong logins all returned 401, never blocked. A secure registration form prevents these by inserting the new user with parameterized queries, validating and HTML-encoding every field (plus a CSP header), rate-limiting attempts, and storing the password as a bcrypt hash, never plaintext.
+To secure Juice Shop's registration and login, I ran it locally (v20.2.0, Docker) and exploited three flaws. **(1) SQL injection:** entering `' OR 1=1--` as the login email logged me in as admin (Figures 1-2), because input is concatenated into the query. **(2) DOM XSS:** searching `<iframe src=javascript:alert(1)>` ran my own JavaScript (Figure 3). **(3) No rate limiting:** twenty wrong logins all returned 401. A secure registration form prevents these with parameterized queries, field validation and HTML-encoding plus a CSP header, rate limiting, and bcrypt password hashing (shown below), never plaintext.
 
 Secure password handling:
 
@@ -38,13 +38,13 @@ curl -X POST .../rest/user/login -d '{"email":"' OR 1=1--","password":"x"}'
 
 ## Part 2: Front-End Form
 
-I built a login form with email and password fields, styled like Juice Shop's. A JavaScript function blocks empty submissions and checks that the email contains `@` and the password is at least 8 characters before sending. Because client checks can be skipped, the Node/Express server runs the same validation again. Passwords are stored as bcrypt hashes, the database lookup uses a parameterized query, every failed login returns one generic message so accounts cannot be enumerated, and there is a limit of 10 attempts per 15 minutes. Status text is written with `textContent`, not `innerHTML`, so echoed input cannot run. Run it with `npm install` then `npm start`, and open `http://localhost:3000`.
+I built a login form with email and password fields. A JavaScript function blocks empty submissions and checks that the email contains `@` and the password is at least 8 characters. Because client checks can be skipped, the Node/Express server repeats the same validation. Passwords are stored as bcrypt hashes, the database lookup uses a parameterized query, every failed login returns one generic message so accounts cannot be enumerated, and logins are limited to 10 attempts per 15 minutes. Status text uses `textContent`, not `innerHTML`, so echoed input cannot run. Run `npm install`, then `npm start`.
 
 ![Login form](docs/shot-01-login.png)
 
 ## Part 3: Exploiting My Own Form
 
-I tried to break my own form with `admin@juice-sh.op' OR '1'='1`, a plain `' OR 1=1--`, and an XSS attempt `<script>alert(1)</script>@x`, in both the browser and curl. None worked: every attempt returned "Invalid email or password," with no login and no popup. The injection fails because the parameterized query treats my input as a literal string that matches no user, and the status text uses `textContent`, so the script tag shows as plain text. To confirm it was the fix and not luck, I wrote a small script using string-concatenated SQL, and there the same payload logged in and returned the admin row. So the fix that mattered is using parameterized statements; if the form were vulnerable, that is what I would apply.
+I tried to break my own form with `admin@juice-sh.op' OR '1'='1`, a plain `' OR 1=1--`, and an XSS attempt `<script>alert(1)</script>@x`. None worked: every attempt returned "Invalid email or password," with no login and no popup. The injection fails because the parameterized query treats my input as a literal string matching no user, and the status text uses `textContent`, so the script tag shows as plain text. To confirm it was the fix, I wrote a script using string-concatenated SQL, where the same payload logged in and returned the admin row. The fix that mattered is parameterized statements.
 
 ![SQL injection attempt rejected](docs/shot-02-injection-failed.png)
 

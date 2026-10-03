@@ -49,17 +49,14 @@
 <p class="repo"><b>GitHub repository:</b> https://github.com/cmangalwedhe/csce-477-hw2</p>
 
 <h2>Part 1: Secure Feature Design</h2>
-<p>To design a secure registration and login system for Juice Shop, I first ran the app
-locally (v20.2.0, Docker) and exploited three real weaknesses. <b>(1) SQL injection
-bypass:</b> typing <code>' OR 1=1--</code> in the login email with any password logged me
-in as <code>admin@juice-sh.op</code> (Figures 1-2), because input is concatenated into the
-query; the token even showed <code>"role":"admin"</code>. <b>(2) DOM XSS:</b> searching
-<code>&lt;iframe src="javascript:alert(`xss`)"&gt;</code> ran my own JavaScript (Figure 3).
-<b>(3) No rate limiting:</b> 20 wrong logins all returned 401, never blocked. A secure
-registration form prevents these by inserting the new user with parameterized queries,
-validating and HTML-encoding every field (plus a CSP header), rate-limiting attempts, and
-storing the password as a bcrypt hash, never plaintext. Below is how I would store and
-check that password.</p>
+<p>To secure Juice Shop's registration and login, I ran it locally (v20.2.0, Docker) and
+exploited three flaws. <b>(1) SQL injection:</b> entering <code>' OR 1=1--</code> as the
+login email logged me in as admin (Figures 1-2), because input is concatenated into the
+query. <b>(2) DOM XSS:</b> searching <code>&lt;iframe src=javascript:alert(1)&gt;</code>
+ran my own JavaScript (Figure 3). <b>(3) No rate limiting:</b> twenty wrong logins all
+returned 401. A secure registration form prevents these with parameterized queries, field
+validation and HTML-encoding plus a CSP header, rate limiting, and bcrypt password hashing
+(shown below), never plaintext.</p>
 
 <pre><code>const bcrypt = require("bcryptjs");
 // On registration, store only the salted hash (cost factor 12):
@@ -91,15 +88,14 @@ $ 20 wrong admin logins in a row:
   -> never a 429, so the server does not rate-limit or lock the account</code></pre>
 
 <h2>Part 2: Front-End Form</h2>
-<p>I built a login form with email and password fields, styled like Juice Shop's. A
-JavaScript function blocks empty submissions and checks that the email contains
-<code>@</code> and the password is at least 8 characters before sending. Because client
-checks can be skipped, the Node/Express server runs the same validation again. Passwords
-are stored as bcrypt hashes, the database lookup uses a parameterized query, every failed
-login returns one generic message so accounts cannot be enumerated, and there is a limit
-of 10 attempts per 15 minutes. Status text is written with <code>textContent</code>, not
-<code>innerHTML</code>, so echoed input cannot run. Run it with <code>npm install</code>
-then <code>npm start</code>, and open <code>http://localhost:3000</code>.</p>
+<p>I built a login form with email and password fields. A JavaScript function blocks empty
+submissions and checks that the email contains <code>@</code> and the password is at least
+8 characters. Because client checks can be skipped, the Node/Express server repeats the
+same validation. Passwords are stored as bcrypt hashes, the database lookup uses a
+parameterized query, every failed login returns one generic message so accounts cannot be
+enumerated, and logins are limited to 10 attempts per 15 minutes. Status text uses
+<code>textContent</code>, not <code>innerHTML</code>, so echoed input cannot run. Run
+<code>npm install</code>, then <code>npm start</code>.</p>
 
 <div class="fig">
   <img src="shot-01-login.png" alt="Login form" />
@@ -108,14 +104,13 @@ then <code>npm start</code>, and open <code>http://localhost:3000</code>.</p>
 
 <h2>Part 3: Exploiting My Own Form</h2>
 <p>I tried to break my own form with <code>admin@juice-sh.op' OR '1'='1</code>, a plain
-<code>' OR 1=1--</code>, and an XSS attempt <code>&lt;script&gt;alert(1)&lt;/script&gt;@x</code>,
-in both the browser and curl. None worked: every attempt returned "Invalid email or
-password," with no login and no popup. The injection fails because the parameterized query
-treats my input as a literal string that matches no user, and the status text uses
-<code>textContent</code>, so the script tag shows as plain text. To confirm it was the fix
-and not luck, I wrote a small script using string-concatenated SQL, and there the same
-payload logged in and returned the admin row. So the fix that mattered is using
-parameterized statements; if the form were vulnerable, that is what I would apply.</p>
+<code>' OR 1=1--</code>, and an XSS attempt <code>&lt;script&gt;alert(1)&lt;/script&gt;@x</code>.
+None worked: every attempt returned "Invalid email or password," with no login and no
+popup. The injection fails because the parameterized query treats my input as a literal
+string matching no user, and the status text uses <code>textContent</code>, so the script
+tag shows as plain text. To confirm it was the fix, I wrote a script using
+string-concatenated SQL, where the same payload logged in and returned the admin row. The
+fix that mattered is parameterized statements.</p>
 
 <div class="fig">
   <img src="shot-02-injection-failed.png" alt="SQL injection attempt rejected" />
