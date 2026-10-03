@@ -1,4 +1,4 @@
-# CSCE 477 HW2B: Juice Shop Login Clone
+# CSCE 477H HW2B: Juice Shop Login Clone
 
 A small login form that mimics the look of [OWASP Juice Shop](https://owasp.org/www-project-juice-shop/)'s login page. I built it for a web security assignment to practice validating input on both the client and the server, and to handle passwords and SQL in a way that common attacks (SQL injection, XSS, auth bypass, brute force) do not work.
 

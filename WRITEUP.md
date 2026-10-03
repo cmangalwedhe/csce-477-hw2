@@ -1,4 +1,4 @@
-# CSCE 477 Homework 2B
+# CSCE 477H Homework 2B
 
 **Repository:** https://github.com/cmangalwedhe/csce-477-hw2
 
