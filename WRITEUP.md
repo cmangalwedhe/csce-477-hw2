@@ -1,42 +1,34 @@
-# HW 2B — Web Security with OWASP Juice Shop
+# CSCE 477 Homework 2B
 
 **Repository:** https://github.com/cmangalwedhe/csce-477-hw2
 
----
+## Part 1: Secure Feature Design
 
-## Part 1 — Secure Feature Design
+I spent some time going through the Juice Shop demo and found three things worth writing up. The first is the login page. If you type `' OR 1=1--` into the email box with any password, it logs you straight in as the admin, because the app drops your input directly into the SQL string. The second is the search bar, which echoes your search term back onto the page without cleaning it, so `<iframe src="javascript:alert(1)">` actually runs. The third is weak login protection: there is no limit on password attempts, so an account can be brute forced. To stop these I would use parameterized queries so input is only ever data, encode anything printed back to the page and add a Content-Security-Policy header, and hash passwords with bcrypt while limiting login attempts.
 
-Testing OWASP Juice Shop, I confirmed three vulnerabilities. **(1) SQL Injection login bypass:** entering `' OR 1=1--` as the email with any password logs you in as the admin, because the query concatenates input directly. **(2) Cross-Site Scripting:** the search bar reflects the `q` parameter unescaped, so `<iframe src="javascript:alert(1)">` executes. **(3) Broken authentication:** weak passwords and no rate limiting allow brute force. Mitigations: use **parameterized queries** (input becomes data, never SQL), **output encoding / CSP** (markup renders as text), and **bcrypt hashing + rate limiting + lockout**. These remove the attacker's ability to alter query structure, inject script, or guess credentials at scale.
-
-**Secure password handling example:**
+Secure password handling:
 
 ```js
 const bcrypt = require("bcryptjs");
-// On registration — store only the salted hash (cost factor 12):
+// On registration, store only the salted hash (cost factor 12):
 const hash = bcrypt.hashSync(plaintextPassword, 12);
-// On login — compare without ever storing or logging plaintext:
+// On login, compare without ever storing or logging plaintext:
 const ok = bcrypt.compareSync(submittedPassword, hash);
 ```
 
----
+## Part 2: Front-End Form
 
-## Part 2 — Front-End Form Implementation
-
-I built a login form (`public/index.html` + `app.js`) styled to resemble Juice Shop, backed by a small Express server (`server.js`). The **client** blocks empty submissions and checks that the email contains `@` and the password is ≥ 8 characters before sending. The **server** re-runs identical validation (clients can be bypassed), then authenticates against an in-memory SQLite DB using **parameterized queries**, **bcrypt**-hashed passwords, **generic error messages** (prevents account enumeration), and a **rate limiter** (10 attempts/15 min). Status text is written with `textContent`, never `innerHTML`, so echoed input can't execute. Run with `npm install && npm start`, then open `http://localhost:3000`.
+For the form I made a login page with email and password fields, styled to look a bit like Juice Shop's (`public/index.html` and `app.js`). The JavaScript checks that neither field is empty, that the email contains an `@`, and that the password is at least 8 characters before it sends anything. I did not want to rely on that alone, since anyone can skip the browser and hit the server directly, so the Node/Express backend (`server.js`) runs the same checks again. Passwords are stored as bcrypt hashes, the database lookup uses a parameterized query, every failed login returns the same message so you cannot tell which accounts exist, and there is a limit of 10 attempts per 15 minutes. You run it with `npm install` and then `npm start`, then open `http://localhost:3000`.
 
 ![Login form](docs/shot-01-login.png)
 
----
+## Part 3: Exploiting My Own Form
 
-## Part 3 — Exploiting My Own Form
-
-**Steps taken.** I attacked my own login with (a) the SQL-injection auth-bypass `admin@juice-sh.op' OR '1'='1`, (b) a raw `' OR 1=1--`, and (c) an XSS payload `<script>alert(1)</script>@x` in the email field — via both the browser UI and `curl`.
-
-**Result — attacks failed.** Every payload returned `Invalid email or password.` No login, no script execution. The parameterized query binds the payload as a literal string that matches no row; the `textContent` sink renders markup as inert text. A separate demo (`vulnerable-demo.js`) proves the *same* payload succeeds against concatenated SQL (`... WHERE email = '" + input + "'`), returning the admin row — confirming the fix is what matters.
+Then I tried to break my own form. I used the classic `admin@juice-sh.op' OR '1'='1` in the email box, also a plain `' OR 1=1--`, and an XSS attempt `<script>alert(1)</script>@x`, testing each one both in the browser and with curl. None of them worked. Every attempt came back with "Invalid email or password," no login and no popup. The injection fails because the query treats my input as a plain string that does not match any user, and the status text is set with `textContent`, so the script tag just shows up as literal text instead of running. To make sure it was not luck, I wrote a small script using the old string-building style of query, and there the exact same payload logged in and returned the admin row. So the thing that actually protected me was using parameterized queries. If the form had been built the naive way, switching to prepared statements is the fix.
 
 ![SQL injection attempt rejected](docs/shot-02-injection-failed.png)
 
-**Fix.** If the form *were* vulnerable, the fix is the one already applied: **parameterized/prepared statements** for every query (plus output encoding for any reflected value). Never build SQL by string concatenation.
+Test output:
 
 ```
 === SQL injection auth-bypass attempt ===
@@ -48,9 +40,9 @@ I built a login form (`public/index.html` + `app.js`) styled to resemble Juice S
 === correct credentials ===
 {"success":true,"message":"Login successful."}
 
-=== vulnerable-demo.js (concatenated SQL, SAME payload) ===
+=== vulnerable-demo.js (concatenated SQL, same payload) ===
 Executed query: SELECT * FROM users WHERE email = 'admin@juice-sh.op' OR '1'='1'
 Leaked row: { id: 1, email: 'admin@juice-sh.op', password_hash: 'real-hash' }
 Rows returned: 1  ->  AUTH BYPASS SUCCEEDED
-Parameterized version with the SAME payload -> matched NO rows (injection neutralized).
+Parameterized version with same payload -> matched NO rows (injection neutralized).
 ```

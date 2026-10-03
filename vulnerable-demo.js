@@ -1,5 +1,5 @@
 // FOR DEMONSTRATION ONLY (assignment Part 3).
-// This shows the INSECURE pattern — string-concatenated SQL — and proves the
+// This shows the INSECURE pattern, string-concatenated SQL, and proves the
 // same injection payload that FAILS against server.js SUCCEEDS here.
 // This file is never imported by the real server.
 

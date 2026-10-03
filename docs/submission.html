@@ -2,112 +2,106 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>HW 2B — Web Security with OWASP Juice Shop</title>
+<title>CSCE 477 HW2B</title>
 <style>
-  @page { size: letter; margin: 2cm; }
+  @page { size: letter; margin: 1in; }
   * { box-sizing: border-box; }
   body {
-    font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
-    color: #1f2328; line-height: 1.5; font-size: 11pt; margin: 0;
+    font-family: "Times New Roman", Times, serif;
+    color: #000; line-height: 1.45; font-size: 12pt; margin: 0;
   }
-  h1 { font-size: 20pt; margin: 0 0 2px; }
-  h2 {
-    font-size: 14pt; margin: 22px 0 6px; padding-bottom: 4px;
-    border-bottom: 2px solid #d2691e; color: #9c4a12;
+  .heading { margin-bottom: 18px; }
+  .heading .name { font-weight: bold; }
+  .heading div { font-size: 12pt; }
+  h1 {
+    font-size: 15pt; text-align: center; font-weight: bold;
+    margin: 4px 0 18px;
   }
-  h3 { font-size: 11.5pt; margin: 14px 0 4px; }
-  .meta { color: #555; font-size: 10pt; margin-bottom: 4px; }
-  .repo { font-size: 10.5pt; margin: 2px 0 10px; }
-  code, pre { font-family: "Cascadia Code", Consolas, "Courier New", monospace; }
-  code { background: #f2efe9; padding: 1px 4px; border-radius: 3px; font-size: 9.5pt; }
+  h2 { font-size: 13pt; margin: 18px 0 4px; font-weight: bold; }
+  p { margin: 8px 0; text-align: justify; }
+  code {
+    font-family: Consolas, "Courier New", monospace; font-size: 10.5pt;
+  }
   pre {
-    background: #1e1e1e; color: #e8e8e8; padding: 12px 14px; border-radius: 6px;
-    font-size: 8.7pt; line-height: 1.4; overflow-x: auto; white-space: pre-wrap;
-    word-break: break-word;
+    font-family: Consolas, "Courier New", monospace;
+    background: #f5f5f5; border: 1px solid #ccc; padding: 9px 11px;
+    font-size: 9.5pt; line-height: 1.35; white-space: pre-wrap;
+    word-break: break-word; margin: 8px 0;
   }
-  pre code { background: none; color: inherit; padding: 0; }
-  figure { margin: 10px 0; text-align: center; page-break-inside: avoid; }
-  figure img {
-    max-width: 78%; border: 1px solid #ddd; border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
-  }
-  figcaption { font-size: 9pt; color: #666; margin-top: 4px; }
-  p { margin: 7px 0; }
-  .fail { color: #b3261e; font-weight: 600; }
-  .ok { color: #1a7f37; font-weight: 600; }
-  section { page-break-inside: avoid; }
+  pre code { font-size: 9.5pt; }
+  .fig { text-align: center; margin: 12px 0; page-break-inside: avoid; }
+  .fig img { width: 62%; border: 1px solid #999; }
+  .fig p { text-align: center; font-size: 10.5pt; font-style: italic; margin: 4px 0 0; }
+  .repo { margin: 2px 0 0; }
 </style>
 </head>
 <body>
 
-<h1>HW 2B — Web Security with OWASP Juice Shop</h1>
-<div class="meta">Secure feature design · front-end login form · self-exploitation</div>
-<div class="repo"><strong>Repository:</strong>
-  <code>https://github.com/cmangalwedhe/csce-477-hw2</code>
+<div class="heading">
+  <div class="name">[Your Name]</div>
+  <div>CSCE 477: Cyber Security</div>
+  <div>Homework 2B</div>
+  <div>October 2, 2026</div>
 </div>
 
-<section>
-<h2>Part 1 — Secure Feature Design</h2>
-<p>Testing OWASP Juice Shop, I confirmed three vulnerabilities.
-<strong>(1) SQL Injection login bypass:</strong> entering <code>' OR 1=1--</code> as the
-email with any password logs you in as admin, because the query concatenates input
-directly. <strong>(2) Cross-Site Scripting:</strong> the search bar reflects the
-<code>q</code> parameter unescaped, so <code>&lt;iframe src="javascript:alert(1)"&gt;</code>
-executes. <strong>(3) Broken authentication:</strong> weak passwords and no rate limiting
-allow brute force. Mitigations: use <strong>parameterized queries</strong> (input becomes
-data, never SQL), <strong>output encoding / CSP</strong> (markup renders as text), and
-<strong>bcrypt hashing + rate limiting + lockout</strong>. These remove the attacker's
-ability to alter query structure, inject script, or guess credentials at scale.</p>
+<h1>Web Security with OWASP Juice Shop</h1>
 
-<h3>Secure password handling example</h3>
+<p class="repo"><b>GitHub repository:</b> https://github.com/cmangalwedhe/csce-477-hw2</p>
+
+<h2>Part 1: Secure Feature Design</h2>
+<p>I spent some time going through the Juice Shop demo and found three things worth
+writing up. The first is the login page. If you type <code>' OR 1=1--</code> into the
+email box with any password, it logs you straight in as the admin, because the app drops
+your input directly into the SQL string. The second is the search bar, which echoes your
+search term back onto the page without cleaning it, so
+<code>&lt;iframe src="javascript:alert(1)"&gt;</code> actually runs. The third is weak
+login protection: there is no limit on password attempts, so an account can be brute
+forced. To stop these I would use parameterized queries so input is only ever data,
+encode anything printed back to the page and add a Content-Security-Policy header, and
+hash passwords with bcrypt while limiting login attempts. Below is how I would store and
+check a password.</p>
+
 <pre><code>const bcrypt = require("bcryptjs");
-// On registration — store only the salted hash (cost factor 12):
+// On registration, store only the salted hash (cost factor 12):
 const hash = bcrypt.hashSync(plaintextPassword, 12);
-// On login — compare without ever storing or logging plaintext:
+// On login, compare without ever storing or logging plaintext:
 const ok = bcrypt.compareSync(submittedPassword, hash);</code></pre>
-</section>
 
-<section>
-<h2>Part 2 — Front-End Form Implementation</h2>
-<p>I built a login form (<code>public/index.html</code> + <code>app.js</code>) styled to
-resemble Juice Shop, backed by a small Express server (<code>server.js</code>). The
-<strong>client</strong> blocks empty submissions and checks that the email contains
-<code>@</code> and the password is &ge; 8 characters before sending. The
-<strong>server</strong> re-runs identical validation (clients can be bypassed), then
-authenticates against an in-memory SQLite DB using <strong>parameterized queries</strong>,
-<strong>bcrypt</strong>-hashed passwords, <strong>generic error messages</strong>
-(prevents account enumeration), and a <strong>rate limiter</strong> (10 attempts/15 min).
-Status text is written with <code>textContent</code>, never <code>innerHTML</code>, so
-echoed input can't execute. Run with <code>npm install &amp;&amp; npm start</code>, then open
-<code>http://localhost:3000</code>.</p>
-<figure>
+<h2>Part 2: Front-End Form</h2>
+<p>For the form I made a login page with email and password fields, styled to look a bit
+like Juice Shop's. The JavaScript checks that neither field is empty, that the email
+contains an <code>@</code>, and that the password is at least 8 characters before it sends
+anything. I did not want to rely on that alone, since anyone can skip the browser and hit
+the server directly, so the Node/Express backend runs the same checks again. Passwords are
+stored as bcrypt hashes, the database lookup uses a parameterized query, every failed
+login returns the same message so you cannot tell which accounts exist, and there is a
+limit of 10 attempts per 15 minutes. You run it with <code>npm install</code> and then
+<code>npm start</code>, and open <code>http://localhost:3000</code>.</p>
+
+<div class="fig">
   <img src="shot-01-login.png" alt="Login form" />
-  <figcaption>The login form running at localhost:3000.</figcaption>
-</figure>
-</section>
+  <p>Figure 1. The login form running on localhost.</p>
+</div>
 
-<section>
-<h2>Part 3 — Exploiting My Own Form</h2>
-<p><strong>Steps taken.</strong> I attacked my own login with (a) the SQL-injection
-auth-bypass <code>admin@juice-sh.op' OR '1'='1</code>, (b) a raw <code>' OR 1=1--</code>,
-and (c) an XSS payload <code>&lt;script&gt;alert(1)&lt;/script&gt;@x</code> in the email
-field — via both the browser UI and <code>curl</code>.</p>
+<h2>Part 3: Exploiting My Own Form</h2>
+<p>Then I tried to break my own form. I used the classic
+<code>admin@juice-sh.op' OR '1'='1</code> in the email box, also a plain
+<code>' OR 1=1--</code>, and an XSS attempt <code>&lt;script&gt;alert(1)&lt;/script&gt;@x</code>,
+testing each one both in the browser and with curl. None of them worked. Every attempt came
+back with "Invalid email or password," no login and no popup. The injection fails because
+the query treats my input as a plain string that does not match any user, and the status
+text is set with <code>textContent</code>, so the script tag just shows up as literal text
+instead of running. To make sure it was not luck, I wrote a small script using the old
+string-building style of query, and there the exact same payload logged in and returned the
+admin row. So the thing that actually protected me was using parameterized queries. If the
+form had been built the naive way, switching to prepared statements is the fix.</p>
 
-<p><strong>Result — <span class="fail">attacks failed.</span></strong> Every payload
-returned <code>Invalid email or password.</code> No login, no script execution. The
-parameterized query binds the payload as a literal string that matches no row; the
-<code>textContent</code> sink renders markup as inert text. A separate demo
-(<code>vulnerable-demo.js</code>) proves the <em>same</em> payload succeeds against
-concatenated SQL, returning the admin row — confirming the fix is what matters.</p>
-
-<figure>
+<div class="fig">
   <img src="shot-02-injection-failed.png" alt="SQL injection attempt rejected" />
-  <figcaption>SQL-injection payload in the email field — rejected with a generic error.</figcaption>
-</figure>
+  <p>Figure 2. The SQL injection payload in the email field is rejected.</p>
+</div>
 
-<p><strong>Fix.</strong> If the form <em>were</em> vulnerable, the fix is the one already
-applied: <strong>parameterized / prepared statements</strong> for every query (plus output
-encoding for any reflected value). Never build SQL by string concatenation.</p>
+<p>The output from my tests is below.</p>
 
 <pre><code>=== SQL injection auth-bypass attempt ===
 {"success":false,"message":"Email must contain '@'."}
@@ -118,12 +112,11 @@ encoding for any reflected value). Never build SQL by string concatenation.</p>
 === correct credentials ===
 {"success":true,"message":"Login successful."}
 
-=== vulnerable-demo.js (concatenated SQL, SAME payload) ===
+=== vulnerable-demo.js (concatenated SQL, same payload) ===
 Executed query: SELECT * FROM users WHERE email = 'admin@juice-sh.op' OR '1'='1'
 Leaked row: { id: 1, email: 'admin@juice-sh.op', password_hash: 'real-hash' }
 Rows returned: 1  ->  AUTH BYPASS SUCCEEDED
-Parameterized version with SAME payload -> matched NO rows (injection neutralized).</code></pre>
-</section>
+Parameterized version with same payload -> matched NO rows (injection neutralized).</code></pre>
 
 </body>
 </html>

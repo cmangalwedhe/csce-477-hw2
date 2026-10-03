@@ -1,4 +1,4 @@
-// Client-side validation. This is a convenience layer only — the server
+// Client-side validation. This is a convenience layer only, the server
 // re-validates everything, because client-side checks can be bypassed.
 
 const form = document.getElementById("loginForm");
@@ -46,7 +46,7 @@ form.addEventListener("submit", async (event) => {
     if (res.ok && data.success) {
       setStatus("Login successful. Welcome!", "ok");
     } else {
-      // Generic message — we never reveal whether the email or the
+      // Generic message, we never reveal whether the email or the
       // password was the wrong part (prevents account enumeration).
       setStatus(data.message || "Invalid email or password.", "error");
     }
